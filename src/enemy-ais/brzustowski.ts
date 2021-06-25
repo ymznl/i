@@ -21,20 +21,20 @@
   """
 
   We believe this is a typographical error and Brzustowski intended to write "steps 1 or 3".
-
-  This implementation intentionally avoids some fairly obvious optimisations, to make it more
-  clear that it adheres to the original algorithm.
 */
 
 import type { CoreState, EnemyAi } from '../components/Game/Game.jsx'
 
-type Step = 1 | 2 | 3 | 4
+type Step = 1 | 2
+type Piece = 'S' | 'Z'
 
 type BrzAiState = {
   step: Step,
-  displayPiece: 'S' | 'Z'
+  queue: Piece[] // includes the piece currently in the well and all previewed pieces
   seenWells: number[][]
 }
+
+const NUM_PREVIEW_PIECES = 2
 
 export const brzAi: EnemyAi = (
   currentCoreState: CoreState,
@@ -47,14 +47,25 @@ export const brzAi: EnemyAi = (
   if (currentAiState === undefined) {
     currentAiState = {
       step: 1,
-      displayPiece: 'S',
+      queue: Array(1 + NUM_PREVIEW_PIECES).fill('S'),
       seenWells: []
     }
   }
 
-  let nextAiState: BrzAiState
+  const last = currentAiState.queue[currentAiState.queue.length - 1]
+
+  // By default just send the same piece as last time and stay in this state
+  const nextAiState: BrzAiState = {
+    step: currentAiState.step,
+    queue: [...currentAiState.queue.slice(1), last],
+    seenWells: [
+      ...currentAiState.seenWells,
+      currentCoreState.well
+    ]
+  }
 
   if (currentAiState.step === 1) {
+    // Step 1: waiting for a cycle
     const cycleDetected = currentAiState.seenWells.some(seenWell =>
       seenWell.every((row: number, y) =>
         row === currentCoreState.well[y]
@@ -62,68 +73,18 @@ export const brzAi: EnemyAi = (
     )
 
     if (cycleDetected) {
-      // Jump to next step
-      nextAiState = {
-        step: 2,
-        displayPiece: 'Z',
-        seenWells: [
-          ...currentAiState.seenWells,
-          currentCoreState.well
-        ]
-      }
-    } else {
-      // Stay on this step
-      nextAiState = {
-        step: 1,
-        displayPiece: 'S',
-        seenWells: [
-          ...currentAiState.seenWells,
-          currentCoreState.well
-        ]
-      }
-    }
-  } else if (currentAiState.step === 2) {
-    nextAiState = {
-      step: 3,
-      displayPiece: 'Z',
-      seenWells: []
-    }
-  } else if (currentAiState.step === 3) {
-    const cycleDetected = currentAiState.seenWells.some(seenWell =>
-      seenWell.every((row: number, y) =>
-        row === currentCoreState.well[y]
-      )
-    )
-
-    if (cycleDetected) {
-      // Jump to next step
-      nextAiState = {
-        step: 4,
-        displayPiece: 'S',
-        seenWells: [
-          ...currentAiState.seenWells,
-          currentCoreState.well
-        ]
-      }
-    } else {
-      // Stay on this step
-      nextAiState = {
-        step: 3,
-        displayPiece: 'Z',
-        seenWells: [
-          ...currentAiState.seenWells,
-          currentCoreState.well
-        ]
-      }
+      // Start sending the opposite piece
+      nextAiState.step = 2
+      nextAiState.queue[nextAiState.queue.length - 1] = last === 'S' ? 'Z' : 'S'
     }
   } else {
-    // Step 4
-    nextAiState = {
-      step: 1,
-      displayPiece: 'S',
-      seenWells: []
+    // Step 2: waiting for the opposite piece to make its way to the front
+    if (nextAiState.queue[0] === last) {
+      // Go back to waiting for a cycle
+      nextAiState.step = 1
+      nextAiState.seenWells = []
     }
   }
 
-  return [currentAiState.displayPiece, nextAiState]
+  return [nextAiState.queue[0], nextAiState]
 }
